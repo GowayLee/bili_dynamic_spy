@@ -44,6 +44,7 @@ major_type_dict = {
     "none"		:   "动态失效"	
 }
 
+config = json.loads(open("config.json", "r", encoding="utf-8").read())
 headers = ["时间", "类型", "文本内容", "转发/投稿", "主体类型", "转发/投稿源标题"]
 datalist = []
 user_name = ""
@@ -61,9 +62,8 @@ def main():
     global cur_offset
     global has_more
 
-    uid = input("请输入UID：")
-    # uid = "20143617"
-    deepth = int(input("请输入爬取深度(允许下滑刷新次数)："))
+    uid = config.get("tar_uid")
+    deepth = config.get("crawl_deepth")
     baseurl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 
     data = getData(baseurl, uid, offset="")
@@ -211,26 +211,20 @@ def split_str(text): # 'MAJOR_TYPE_ARCHIVE' -> 'archive', 'MAJOR_TYPE_LIVE_RCMD'
         return ""
 
 def askURL(url: str, uid: str, offset: str):
-    head = {
+    header = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-Encoding': 'gzip, deflate, br, zstd',
         'accept-Language': 'zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7',
         'origin': 'https://space.bilibili.com',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
     }
+    config_cookie = config.get("cookies")
     cookie = {
-        "buvid3": "7631798E-EFA9-B1C2-19B9-612711A4FE8785440infoc",
-        "b_nut": "1722356585",
-        "_uuid": "9C7BCCF7A-6F2E-DA76-5D109-1410231681069E85799infoc",
-        "buvid_fp": "b2b6560be780932f3c6455a3d03e3c41",
-        "buvid4": "A99F9B6B-BD74-5D96-F6D3-8EB77910BD0986489-024073016-dRu%2FudwhD5dOGbeZ263moQ%3D%3D",
-        "enable_web_push": "DISABLE",
-        "home_feed_column": "5",
-        "browser_resolution": "1544-998",
-        "header_theme_version": "CLOSE",
-        "bili_ticket": "eyJhbGciOiJIUzI1NiIsImtpZCI6InMwMyIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MjI2MjAxMDIsImlhdCI6MTcyMjM2MDg0MiwicGx0IjotMX0.4Q4dsOTDGLJNqj6kThCVo4DoD3CY6CzVi8FOt7OPyWw",
-        "ticket_expires": "1722620042",
-        "b_lsid": "A5E8B689_19104C69B30"
+        "buvid3": config_cookie.get("buvid3"),
+        "b_nut": config_cookie.get("b_nut"),
+        "_uuid": config_cookie.get("_uuid"),
+        # "buvid_fp": "b2b6560be780932f3c6455a3d03e3c41",
+        "buvid4": config_cookie.get("buvid4"),
     }
 
     param = {
@@ -238,11 +232,11 @@ def askURL(url: str, uid: str, offset: str):
         'host_mid': uid
     }
 
-    response = requests.get(url, params=param, cookies=cookie, headers=head)
+    response = requests.get(url, params=param, cookies=cookie, headers=header)
     if response.status_code == 200:
         return response.text
     else:
-        print("鉴权失败! 请检查Cookie与请求头")
+        print("鉴权失败! 请检查Cookie")
         return ''
 
 def saveCsvData():
@@ -253,6 +247,6 @@ def saveCsvData():
         for row in datalist:
             writer.writerow(row)
 
-if __name__ == "__main__":  # 当程序执行时
+if __name__ == "__main__":
     main()
     print("爬取完毕！")
