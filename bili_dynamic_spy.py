@@ -1,8 +1,10 @@
+"""bili_dynamic_spy"""
+
 import datetime
-import requests
 import json
 import csv
 import time
+import requests
 
 dynamic_type_dict = {
     "DYNAMIC_TYPE_NONE"	            :       "无效动态",
@@ -44,131 +46,110 @@ major_type_dict = {
     "none"		:   "动态失效"	
 }
 
-config = json.loads(open("config.json", "r", encoding="utf-8").read())
-headers = ["时间", "类型", "文本内容", "转发/投稿", "主体类型", "转发/投稿源标题"]
-datalist = []
-user_name = ""
-savepath = ".\\saved\\"
-deepth = 0
-cur_offset = ""
-has_more = False
+with open("config.json", "r", encoding="utf-8") as config_file:
+    config = json.load(config_file)
+HEADERS = ["时间", "类型", "文本内容", "转发/投稿", "主体类型", "转发/投稿源标题"]
+UID = config.get("tar_uid")
+DEEPTH = config.get("crawl_deepth")
 
 def main():
-    global headers
-    global datalist
-    global user_name
-    global savepath
-    global deepth
-    global cur_offset
-    global has_more
-
-    uid = config.get("tar_uid")
-    deepth = config.get("crawl_deepth")
+    """Main function"""
     baseurl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
-
-    data = getData(baseurl, uid, offset="")
+    data = get_data(baseurl, UID, offset="")
     if data == "":
         print("获取数据失败")
         return
-    
-    user_name = get_name(data)
-    savepath = savepath + user_name + "的成分表.csv"
+    savepath = ".\\saved\\" + get_name(data) + "的成分表.csv"
     with open(savepath, 'w', newline='', encoding='utf-8') as csv_file: # 创建csv文件, 并写入字段名
         writer = csv.writer(csv_file)
-        writer.writerow(headers)
+        writer.writerow(HEADERS)
+    # 更新页面偏移数据
+    has_more = data.get("data").get("has_more")
+    cur_offset = data.get("data").get("offset")
+    parse_data(data)
+    save_csv_data(savepath, [])
 
-    parseData(data)
-    saveCsvData()
+    if has_more is True and DEEPTH > 0:
+        for i in range(0, DEEPTH): # 第一次页面偏移时会重叠一条旧动态
 
-    if has_more == True and deepth > 0:
-        for i in range(0, deepth): # 第一次页面偏移时会重叠一条旧动态
-            global cur_offset
-
-            data = getData(baseurl, uid, cur_offset)
+            data = get_data(baseurl, UID, cur_offset)
             if data == "":
                 print("获取数据失败")
                 return
-            parseData(data)
+            has_more = data.get("data").get("has_more")
+            cur_offset = data.get("data").get("offset")
+            datapage = parse_data(data)
 
             if i == 1:
-                datalist.pop(0) # 去除第一条重复的动态
-            saveCsvData()
-            if has_more == False:
+                datapage.pop(0) # 去除第一条重复的动态
+            save_csv_data(savepath, datapage)
+            if has_more is False:
                 break
             time.sleep(0.2)
 
     return
 
-def getData(baseurl: str, uid: str, offset: str):
-    respond = askURL(baseurl, uid, offset)
+def get_data(baseurl: str, uid: str, offset: str):
+    """Parse response from bilibili api to json str"""
+    respond = ask_url(baseurl, uid, offset)
     if respond != "":
         return json.loads(respond)
-    else:
-        return ""
+    return ""
 
-def parseData(data):
-    global datalist
-    global cur_offset
-    global has_more
-
-    # 更新页面偏移数据
-    has_more = data.get("data").get("has_more")
-    cur_offset = data.get("data").get("offset")
-
+def parse_data(data):
+    """Parse info from json str"""
     datetime_instance = datetime.datetime
-    datalist = [] # 重置数据列表
+    datapage = []
     items = data.get("data").get("items")
 
     for item in items:
         data_row = [] # [动态时间, 动态类型, 动态文本, 转发/投稿, 转发/投稿源标题]
-        time = ""
-        type = ""
         text = ""
         ref_type = ""
         ref_major_type = ""
         ref_title = ""
         module = item.get("modules")
 
+        pub_time = None
         author = module.get("module_author")
-        if author != None:
-            time = datetime_instance.fromtimestamp(module.get("module_author").get("pub_ts"))
+        if author is not None:
+            pub_time = datetime_instance.fromtimestamp(module.get("module_author").get("pub_ts"))
         else:
-            time = "-"
-        data_row.append(time)
+            pub_time = "-"
+        data_row.append(pub_time)
 
-        type = dynamic_type_dict.get(item.get("type"))
-        data_row.append(type)
+        pub_type = dynamic_type_dict.get(item.get("type"))
+        data_row.append(pub_type)
 
         dynamic = module.get("module_dynamic")
-        if dynamic != None:
+        if dynamic is not None:
             desc = dynamic.get("desc")
-            if desc != None:
+            if desc is not None:
                 text = desc.get("text")
             else:
                 text = "-"
             data_row.append(text.replace("\n", " ")) # 去除换行符
-            
             major = dynamic.get("major")
             orig = item.get("orig")
-            if orig == None and major == None:
+            if orig is None and major is None:
                 ref_type = "-"
                 ref_major_type = "-"
-            elif major != None: # 附有投稿/更新
+            elif major is not None: # 附有投稿/更新
                 ref_type = "投稿/更新"
 
-            elif orig != None: # 附有转发, 记录转发的动态主体类型与主体标题
+            elif orig is not None: # 附有转发, 记录转发的动态主体类型与主体标题
                 ref_type = "转发"
                 major = orig.get("modules").get("module_dynamic").get("major")
 
-            try: # TODO: 神奇问题, 不同情况下的请求, 返回的JSON有细微但是致命的区别, 导致无法正确解析
+            try:    # 神奇问题, 不同情况下的请求, 返回的JSON有细微但是致命的区别, 导致无法正确解析
                 major_type = major.get("type")
-                if major_type != None:
+                if major_type is not None:
                     major_type_key = split_str(major_type)
                     ref_major_type = major_type_dict.get(major_type_key) # 动态主体类型
 
-                    if major_type_key != "draw" and major_type_key != "live_rcmd" and major_type_key != "none": # 非 带图动态、直播推荐、动态失效
+                    if major_type_key not in ('draw', 'live_rcmd', 'none'): # 非 带图动态、直播推荐、动态失效
                         major_type_value = major.get(major_type_key)
-                        if major_type_value != None:
+                        if major_type_value is not None:
                             ref_title = major_type_value.get("title")
                         else:
                             ref_title = "-"
@@ -181,36 +162,36 @@ def parseData(data):
                 data_row.append(ref_type)
                 data_row.append(ref_major_type)
                 data_row.append(ref_title.replace('\n', ' '))
-            except Exception as e:
+            except AttributeError as e:
                 print(f"Error: {e}")
                 data_row.append(ref_type)
                 data_row.append("N/A")
                 data_row.append("N/A")
 
-        datalist.append(data_row)
+        datapage.append(data_row)
         current_datetime = datetime_instance.now()
-        print(f"{current_datetime}:" + "\033[32m[INFO]\033[0m" + f" Successfully get the data of >>" + text)
+        print(f"{current_datetime}:" + "\033[32m[INFO]\033[0m" + " Successfully get the data of >>" + text)
 
-    return datalist
+    return datapage
 
 def get_name(data):
+    """Get the name of the user who posted the dynamic"""
     items = data.get("data").get("items")
     if len(items) > 0:
         return items[0].get("modules").get("module_author").get("name")
-    else:
-        return "不发动态的人"
+    return "不发动态的人"
 
-''' 模仿字符串模式切片生成键值 '''
-def split_str(text): # 'MAJOR_TYPE_ARCHIVE' -> 'archive', 'MAJOR_TYPE_LIVE_RCMD' -> 'live_rcmd'
+def split_str(text):
+    """Do slice and lowercase the string 'MAJOR_TYPE_LIVE_RCMD' -> 'live_rcmd'"""
     parts = text.split('_')
     if len(parts) > 2:
         effect_part = '_'.join(parts[2:])
         result = effect_part.lower()
         return result
-    else:
-        return ""
+    return ""
 
-def askURL(url: str, uid: str, offset: str):
+def ask_url(url: str, uid: str, offset: str):
+    """Send HTTP request"""
     header = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-Encoding': 'gzip, deflate, br, zstd',
@@ -232,19 +213,17 @@ def askURL(url: str, uid: str, offset: str):
         'host_mid': uid
     }
 
-    response = requests.get(url, params=param, cookies=cookie, headers=header)
+    response = requests.get(url, params=param, cookies=cookie, headers=header, timeout=8)
     if response.status_code == 200:
         return response.text
-    else:
-        print("鉴权失败! 请检查Cookie")
-        return ''
+    print("鉴权失败! 请检查Cookie")
+    return ''
 
-def saveCsvData():
-    global datalist
-    global savepath
+def save_csv_data(savepath: str, datapage: list):
+    """Save data of one page to savepath"""
     with open(savepath, 'a', newline='', encoding='utf-8') as csv_file: # 追加模式, 每一次刷新都进行追加
         writer = csv.writer(csv_file)
-        for row in datalist:
+        for row in datapage:
             writer.writerow(row)
 
 if __name__ == "__main__":
