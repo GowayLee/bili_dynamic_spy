@@ -1,2 +1,7 @@
-test*
 .vscode/
+json_exp/
+
+test*
+saved/*.csv
+
+config.json
