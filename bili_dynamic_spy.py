@@ -66,8 +66,8 @@ def main():
     # 更新页面偏移数据
     has_more = data.get("data").get("has_more")
     cur_offset = data.get("data").get("offset")
-    parse_data(data)
-    save_csv_data(savepath, [])
+    datapage = parse_data(data)
+    save_csv_data(savepath, datapage)
 
     if has_more is True and DEEPTH > 0:
         for i in range(0, DEEPTH): # 第一次页面偏移时会重叠一条旧动态
