@@ -52,6 +52,8 @@ HEADERS = ["时间", "类型", "文本内容", "转发/投稿", "主体类型", 
 UID = config.get("tar_uid")
 DEEPTH = config.get("crawl_deepth")
 
+count = 0
+
 def main():
     """Main function"""
     baseurl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
@@ -103,6 +105,7 @@ def parse_data(data):
     items = data.get("data").get("items")
 
     for item in items:
+        global count
         data_row = [] # [动态时间, 动态类型, 动态文本, 转发/投稿, 转发/投稿源标题]
         text = ""
         ref_type = ""
@@ -170,6 +173,7 @@ def parse_data(data):
 
         datapage.append(data_row)
         current_datetime = datetime_instance.now()
+        count = count + 1
         print(f"{current_datetime}:" + "\033[32m[INFO]\033[0m" + " Successfully get the data of >>" + text)
 
     return datapage
@@ -204,7 +208,6 @@ def ask_url(url: str, uid: str, offset: str):
         "buvid3": config_cookie.get("buvid3"),
         "b_nut": config_cookie.get("b_nut"),
         "_uuid": config_cookie.get("_uuid"),
-        # "buvid_fp": "b2b6560be780932f3c6455a3d03e3c41",
         "buvid4": config_cookie.get("buvid4"),
     }
 
@@ -227,5 +230,7 @@ def save_csv_data(savepath: str, datapage: list):
             writer.writerow(row)
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
-    print("爬取完毕！")
+    end_time = time.time()
+    print(f"爬取完毕\n总耗时: {end_time - start_time}秒\n获取数据量: {count}条")
